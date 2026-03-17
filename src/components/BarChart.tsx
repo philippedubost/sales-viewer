@@ -105,8 +105,8 @@ const BarChartView: React.FC<BarChartProps> = ({ invoices }) => {
 
   if (yearData.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        No data to display
+      <div className="flex items-center justify-center h-64" style={{ color: '#3d5470' }}>
+        Aucune donnée à afficher
       </div>
     );
   }

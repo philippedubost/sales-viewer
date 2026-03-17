@@ -12,6 +12,41 @@ interface DashboardProps {
 
 type Tab = 'timeline' | 'pie' | 'bar';
 
+const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  {
+    id: 'timeline',
+    label: 'Chronologie',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'pie',
+    label: 'Répartition',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+          d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+          d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'bar',
+    label: 'CA Annuel',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+];
+
 const Dashboard: React.FC<DashboardProps> = ({ invoices, onReset }) => {
   const [tab, setTab] = useState<Tab>('timeline');
 
@@ -22,78 +57,138 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, onReset }) => {
     const clients = new Set(active.map((i) => i.client)).size;
     const totalPaid = paid.reduce((s, i) => s + i.ttc, 0);
     const totalPending = pending.reduce((s, i) => s + i.ttc, 0);
-    return { clients, totalInvoices: active.length, totalPaid, totalPending, paidCount: paid.length, pendingCount: pending.length };
+    return { clients, totalInvoices: active.length, totalPaid, totalPending, pendingCount: pending.length };
   }, [invoices]);
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'timeline', label: 'Timeline' },
-    { id: 'pie', label: 'Camembert' },
-    { id: 'bar', label: 'CA par Année' },
-  ];
+  const currentLabel = NAV.find((n) => n.id === tab)?.label ?? '';
 
   return (
-    <div className="min-h-screen bg-[#0e1018] text-white">
-      {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-bold text-white">Sales Dashboard</h1>
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-green-400" />
-              <span className="text-gray-300">{stats.clients} clients</span>
-            </div>
-            <div className="text-gray-500">·</div>
-            <span className="text-gray-300">{stats.totalInvoices} invoices</span>
-            <div className="text-gray-500">·</div>
-            <span className="text-green-300 font-medium">{fmt(stats.totalPaid)} encaissé</span>
-            {stats.totalPending > 0 && (
-              <>
-                <div className="text-gray-500">·</div>
-                <span className="text-yellow-300 font-medium">{fmt(stats.totalPending)} en attente</span>
-              </>
-            )}
+    <div className="flex min-h-screen" style={{ background: '#080d17' }}>
+
+      {/* Sidebar */}
+      <aside className="flex flex-col w-52 flex-shrink-0"
+        style={{ background: '#0d1526', borderRight: '1px solid #1a2740' }}>
+
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-5 py-5" style={{ borderBottom: '1px solid #1a2740' }}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: '#10b981' }}>
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
           </div>
+          <span className="font-semibold text-white text-sm">Sales Viewer</span>
         </div>
-        <button
-          onClick={onReset}
-          className="text-gray-500 hover:text-gray-300 text-sm transition-colors flex items-center gap-1.5"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-          Load another file
-        </button>
-      </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-800 px-6">
-        <div className="flex gap-0">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`
-                px-5 py-3 text-sm font-medium border-b-2 transition-colors
-                ${tab === t.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600'
-                }
-              `}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {NAV.map((item) => {
+            const active = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setTab(item.id)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 text-left"
+                style={{
+                  background: active ? 'rgba(16,185,129,0.12)' : 'transparent',
+                  color: active ? '#10b981' : '#3d5470',
+                  borderLeft: active ? '2px solid #10b981' : '2px solid transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#6b8aaa';
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#3d5470';
+                }}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Bottom: reset */}
+        <div className="px-3 pb-4">
+          <button
+            onClick={onReset}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs transition-all duration-150"
+            style={{ color: '#1e3048' }}
+            onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.color = '#3d5470'}
+            onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.color = '#1e3048'}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Changer de fichier
+          </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Content */}
-      <div className="p-6">
-        {tab === 'timeline' && <Timeline invoices={invoices} />}
-        {tab === 'pie' && <PieChartView invoices={invoices} />}
-        {tab === 'bar' && <BarChartView invoices={invoices} />}
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0">
+
+        {/* Top bar */}
+        <header className="px-6 py-4 flex items-center justify-between flex-shrink-0"
+          style={{ borderBottom: '1px solid #1a2740' }}>
+          <h2 className="text-sm font-semibold text-white">{currentLabel}</h2>
+
+          {/* KPI pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <KPIPill
+              label="Encaissé"
+              value={fmt(stats.totalPaid)}
+              color="#10b981"
+              bg="rgba(16,185,129,0.08)"
+              border="rgba(16,185,129,0.2)"
+            />
+            {stats.totalPending > 0 && (
+              <KPIPill
+                label={`${stats.pendingCount} en attente`}
+                value={fmt(stats.totalPending)}
+                color="#f59e0b"
+                bg="rgba(245,158,11,0.08)"
+                border="rgba(245,158,11,0.2)"
+              />
+            )}
+            <KPIPill
+              label="Clients"
+              value={String(stats.clients)}
+              color="#6b8aaa"
+              bg="rgba(107,138,170,0.06)"
+              border="rgba(107,138,170,0.15)"
+            />
+            <KPIPill
+              label="Factures"
+              value={String(stats.totalInvoices)}
+              color="#6b8aaa"
+              bg="rgba(107,138,170,0.06)"
+              border="rgba(107,138,170,0.15)"
+            />
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 p-6 overflow-auto">
+          {tab === 'timeline' && <Timeline invoices={invoices} />}
+          {tab === 'pie' && <PieChartView invoices={invoices} />}
+          {tab === 'bar' && <BarChartView invoices={invoices} />}
+        </main>
       </div>
     </div>
   );
 };
+
+const KPIPill: React.FC<{
+  label: string; value: string; color: string; bg: string; border: string;
+}> = ({ label, value, color, bg, border }) => (
+  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+    style={{ background: bg, border: `1px solid ${border}` }}>
+    <span style={{ color: '#3d5470' }}>{label}</span>
+    <span className="font-semibold" style={{ color }}>{value}</span>
+  </div>
+);
 
 export default Dashboard;
