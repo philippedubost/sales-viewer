@@ -170,6 +170,12 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
 
   const bodyHeight = visibleClients.length * laneHeight + 20;
 
+  // 3 months in pixels based on the current date range scale
+  const threeMonthsPx = useMemo(() => {
+    const range = maxDate - minDate || 1;
+    return (91 * 24 * 3600 * 1000 / range) * chartWidth;
+  }, [maxDate, minDate, chartWidth]);
+
   const monthTicks = useMemo(() => {
     const ticks: { x: number; label: string }[] = [];
     const start = new Date(minDate); start.setDate(1);
@@ -186,7 +192,7 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
     return ticks;
   }, [minDate, maxDate, dateToX, todayX]);
 
-  const svgWidth = Math.max(width, todayX + RIGHT_PAD + (pendingInvoices.length > 0 ? 200 : 0));
+  const svgWidth = Math.max(width, todayX + threeMonthsPx + RIGHT_PAD);
 
   function amountLabel(ttc: number): string {
     const abs = Math.abs(ttc);
@@ -233,6 +239,16 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
   const handleMouseLeave = useCallback(() => {
     setTooltip((t) => ({ ...t, visible: false }));
   }, []);
+
+  // Auto-scroll once on mount: position today so 3 months are visible to its right
+  const initialScrollDone = useRef(false);
+  useEffect(() => {
+    if (initialScrollDone.current) return;
+    if (!bodyScrollRef.current || todayX <= LABEL_WIDTH || width <= 0 || threeMonthsPx <= 0) return;
+    const scrollTarget = todayX - width + threeMonthsPx + 60;
+    bodyScrollRef.current.scrollLeft = Math.max(0, scrollTarget);
+    initialScrollDone.current = true;
+  }, [todayX, width, threeMonthsPx]);
 
   // Sync header horizontal scroll with body
   const handleBodyScroll = useCallback(() => {
