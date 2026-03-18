@@ -9,7 +9,7 @@ interface TimelineProps {
   invoices: Invoice[];
 }
 
-const ZOOM_LEVELS = [3, 5, 8, 12, 18, Infinity];
+const ZOOM_PERCENTS = [0.2, 0.4, 0.6, 0.8, 1.0];
 const MIN_R = 5;
 const MAX_R = 72;
 const LANE_HEIGHT_MAX = 90;
@@ -32,7 +32,7 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(5);
+  const [zoom, setZoom] = useState(4); // index 0-4 → 20/40/60/80/100%
   const [laneHeight, setLaneHeight] = useState(LANE_HEIGHT_DEFAULT);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; visible: boolean; content: React.ReactNode }>({
     x: 0, y: 0, visible: false, content: null,
@@ -69,10 +69,10 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
     return map;
   }, [invoices]);
 
-  const maxClients = ZOOM_LEVELS[zoom];
+  const maxClients = Math.max(1, Math.round(clientsByTtc.length * ZOOM_PERCENTS[zoom]));
 
   const visibleClients = useMemo(() => {
-    const selected = maxClients === Infinity ? clientsByTtc : clientsByTtc.slice(0, maxClients);
+    const selected = clientsByTtc.slice(0, maxClients);
     return [...selected].sort((a, b) => {
       const da = clientLastDate.get(a)?.getTime() ?? 0;
       const db = clientLastDate.get(b)?.getTime() ?? 0;
@@ -248,12 +248,12 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
         <div className="flex items-center gap-3">
           <span className="text-gray-400 text-sm">Clients</span>
           <input
-            type="range" min={0} max={5} step={1} value={zoom}
+            type="range" min={0} max={4} step={1} value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
             className="w-32 accent-blue-500"
           />
-          <span className="text-gray-300 text-sm w-20">
-            {maxClients === Infinity ? 'Tous' : `Top ${maxClients}`}
+          <span className="text-gray-300 text-sm w-44">
+            {zoom === ZOOM_PERCENTS.length - 1 ? 'Tous' : `Les ${maxClients} meilleurs clients`}
           </span>
         </div>
         <div className="flex items-center gap-3">
