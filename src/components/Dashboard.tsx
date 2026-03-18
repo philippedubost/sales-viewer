@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Invoice } from '../types';
 import { fmt } from '../utils/format';
+import { encodeInvoices } from '../utils/shareUrl';
 import Timeline from './Timeline';
 import PieChartView from './PieChart';
 import BarChartView from './BarChart';
@@ -49,6 +50,16 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
 
 const Dashboard: React.FC<DashboardProps> = ({ invoices, onReset }) => {
   const [tab, setTab] = useState<Tab>('timeline');
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = () => {
+    const encoded = encodeInvoices(invoices);
+    const url = `${window.location.origin}${window.location.pathname}?d=${encoded}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const stats = useMemo(() => {
     const active = invoices.filter((i) => !i.cancelled);
@@ -121,6 +132,32 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, onReset }) => {
           <KPIPill label="Factures" value={String(stats.totalInvoices)}
             color="#6b8aaa" bg="rgba(107,138,170,0.06)" border="rgba(107,138,170,0.15)" />
         </div>
+
+        {/* Share */}
+        <button onClick={handleShare}
+          className="flex items-center gap-1.5 px-3 h-7 rounded-lg text-xs font-medium transition-all duration-150 flex-shrink-0"
+          style={{
+            background: copied ? 'rgba(16,185,129,0.15)' : 'rgba(107,138,170,0.08)',
+            border: `1px solid ${copied ? 'rgba(16,185,129,0.3)' : 'rgba(107,138,170,0.15)'}`,
+            color: copied ? '#10b981' : '#6b8aaa',
+          }}>
+          {copied ? (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Copié !
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+              Partager
+            </>
+          )}
+        </button>
 
         {/* Divider */}
         <div className="w-px h-4 flex-shrink-0" style={{ background: '#1a2740' }} />
