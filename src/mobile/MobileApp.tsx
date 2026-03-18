@@ -3,10 +3,11 @@ import type { Invoice } from '../types';
 import { parseCSV, SAMPLE_CSV } from '../utils/csvParser';
 import { fmt } from '../utils/format';
 import MobileTimeline from './MobileTimeline';
+import MobileDetails from './MobileDetails';
 import MobilePie from './MobilePie';
 import MobileBar from './MobileBar';
 
-type Tab = 'timeline' | 'pie' | 'bar';
+type Tab = 'timeline' | 'pie' | 'bar' | 'details';
 
 const MobileApp: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
@@ -122,10 +123,12 @@ const MobileUpload: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) 
 
 const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
-    id: 'timeline', label: 'Chronologie',
+    id: 'timeline', label: 'Timeline',
     icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      <circle cx="6" cy="12" r="2.2" strokeWidth={1.8} />
+      <circle cx="12" cy="7" r="2.8" strokeWidth={1.8} />
+      <circle cx="18" cy="14" r="1.8" strokeWidth={1.8} />
+      <line x1="3" y1="19" x2="21" y2="19" strokeWidth={1.5} strokeLinecap="round" />
     </svg>,
   },
   {
@@ -142,6 +145,13 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
     icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
         d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    </svg>,
+  },
+  {
+    id: 'details', label: 'Détails',
+    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+        d="M4 6h16M4 10h16M4 14h10M4 18h7" />
     </svg>,
   },
 ];
@@ -212,6 +222,7 @@ const MobileDashboard: React.FC<{
         {tab === 'timeline' && <MobileTimeline invoices={invoices} />}
         {tab === 'pie' && <MobilePie invoices={invoices} />}
         {tab === 'bar' && <MobileBar invoices={invoices} />}
+        {tab === 'details' && <MobileDetails invoices={invoices} />}
       </div>
 
       {/* Bottom nav */}
