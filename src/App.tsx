@@ -13,8 +13,10 @@ function loadFromUrl(): Invoice[] | null {
   return null;
 }
 
-const App: React.FC = () => {
-  const [invoices, setInvoices] = useState<Invoice[] | null>(loadFromUrl);
+interface AppProps { initialInvoices?: Invoice[] }
+
+const App: React.FC<AppProps> = ({ initialInvoices }) => {
+  const [invoices, setInvoices] = useState<Invoice[] | null>(initialInvoices ?? loadFromUrl);
 
   const handleData = (data: Invoice[]) => {
     setInvoices(data);

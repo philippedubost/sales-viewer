@@ -9,8 +9,10 @@ import MobileBar from './MobileBar';
 
 type Tab = 'timeline' | 'pie' | 'bar' | 'details';
 
-const MobileApp: React.FC = () => {
-  const [invoices, setInvoices] = useState<Invoice[] | null>(null);
+interface MobileAppProps { initialInvoices?: Invoice[] }
+
+const MobileApp: React.FC<MobileAppProps> = ({ initialInvoices }) => {
+  const [invoices, setInvoices] = useState<Invoice[] | null>(initialInvoices ?? null);
   const [tab, setTab] = useState<Tab>('timeline');
 
   if (!invoices) return <MobileUpload onData={setInvoices} />;
