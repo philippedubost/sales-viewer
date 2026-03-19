@@ -16,5 +16,5 @@ export function fmtShort(amount: number): string {
   if (abs >= 1000) {
     return `${sign}${Math.round(abs / 1000)}k €`;
   }
-  return `${sign}${Math.round(abs)} €`;
+  return `${sign}${(abs / 1000).toFixed(1)}k €`;
 }

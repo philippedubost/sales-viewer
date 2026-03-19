@@ -8,6 +8,10 @@
   box-sizing: border-box;
 }
 
+html, body {
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   background-color: #080d17;

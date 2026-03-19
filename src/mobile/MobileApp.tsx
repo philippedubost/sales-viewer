@@ -164,7 +164,7 @@ const MobileDashboard: React.FC<{
   const currentLabel = NAV.find((n) => n.id === tab)?.label ?? '';
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: '#080d17' }}>
+    <div className="flex flex-col min-h-screen" style={{ background: '#080d17', overscrollBehaviorY: 'none' }}>
 
       {/* Header */}
       <div className="flex-shrink-0 px-4 pb-3"
@@ -201,6 +201,17 @@ const MobileDashboard: React.FC<{
           borderTop: '1px solid #1a2740',
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}>
+        {/* Home button */}
+        <button
+          className="flex flex-col items-center justify-center gap-1 py-3 transition-all duration-150"
+          style={{ color: '#3d5470', width: 52 }}
+          onClick={onReset}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          <span className="text-xs font-medium">Accueil</span>
+        </button>
         {NAV.map((item) => {
           const active = tab === item.id;
           return (

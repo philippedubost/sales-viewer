@@ -196,7 +196,7 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
 
   function amountLabel(ttc: number): string {
     const abs = Math.abs(ttc);
-    return abs >= 1000 ? Math.round(abs / 1000) + 'k' : Math.round(abs) + '';
+    return abs >= 1000 ? Math.round(abs / 1000) + 'k' : (abs / 1000).toFixed(1) + 'k';
   }
 
   function labelFontSize(r: number): number {

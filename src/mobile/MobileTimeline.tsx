@@ -39,7 +39,7 @@ function amtLabel(ttc: number): string {
   const abs = Math.abs(ttc);
   if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(1)}M`;
   if (abs >= 1000) return `${Math.round(abs / 1000)}k`;
-  return `${Math.round(abs)}`;
+  return `${(abs / 1000).toFixed(1)}k`;
 }
 
 function nameMinScale(idx: number): number {
@@ -64,12 +64,15 @@ const VSlider: React.FC<{
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => { e.stopPropagation(); onChange(Number((e.target as HTMLInputElement).value)); }}
         style={{
           position: 'absolute',
           width: 110,
           accentColor: '#10b981',
           transform: 'rotate(-90deg)',
           cursor: 'pointer',
+          touchAction: 'none',
         }}
       />
     </div>
@@ -372,14 +375,14 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
       <button
         onClick={() => setShowSettings(true)}
         style={{
-          position: 'absolute', bottom: 14, right: 14, zIndex: 20,
-          width: 34, height: 34, borderRadius: '50%',
-          background: '#0d1526', border: '1px solid #1a2740',
+          position: 'absolute', top: 8, right: 8, zIndex: 20,
+          width: 32, height: 32, borderRadius: '50%',
+          background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
         }}
       >
-        <svg width="16" height="16" fill="none" stroke="#3d5470" viewBox="0 0 24 24">
+        <svg width="16" height="16" fill="none" stroke="#10b981" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
             d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -392,16 +395,18 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           onClick={() => setShowSettings(false)}
           style={{
             position: 'absolute', inset: 0, zIndex: 40,
-            background: 'rgba(8,13,23,0.82)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(8,13,23,0.5)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
+            paddingTop: 48, paddingRight: 12,
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#0d1526', border: '1px solid #1a2740',
-              borderRadius: 20, padding: '18px 24px 22px',
-              minWidth: 200,
+              background: 'rgba(13,21,38,0.88)', border: '1px solid #1a2740',
+              backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+              borderRadius: 16, padding: '14px 20px 18px',
+              minWidth: 170,
             }}
           >
             {/* Header */}
