@@ -259,26 +259,41 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
 
   return (
     <div ref={containerRef} className="w-full">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-6 mb-4 px-2">
+      {/* Controls + legend */}
+      <div className="flex flex-wrap items-center gap-5 mb-4 px-2">
         <div className="flex items-center gap-3">
-          <span className="text-gray-400 text-sm">Clients</span>
+          <span className="text-sm" style={{ color: '#3d5470' }}>Clients</span>
           <input
             type="range" min={0} max={4} step={1} value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
-            className="w-32 accent-blue-500"
+            className="w-32" style={{ accentColor: '#10b981' }}
           />
-          <span className="text-gray-300 text-sm w-44">
+          <span className="text-sm w-44" style={{ color: '#6b8aaa' }}>
             {zoom === ZOOM_PERCENTS.length - 1 ? 'Tous' : `Les ${maxClients} meilleurs clients`}
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-gray-400 text-sm">Espace Vertical</span>
+          <span className="text-sm" style={{ color: '#3d5470' }}>Espace Vertical</span>
           <input
             type="range" min={LANE_HEIGHT_MIN} max={LANE_HEIGHT_MAX} step={1} value={laneHeight}
             onChange={(e) => setLaneHeight(Number(e.target.value))}
-            className="w-32 accent-blue-500"
+            className="w-32" style={{ accentColor: '#10b981' }}
           />
+        </div>
+        {/* Inline legend */}
+        <div className="flex items-center gap-4 ml-auto">
+          <div className="flex items-center gap-1.5" style={{ color: '#3d5470', fontSize: 11 }}>
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#4e79a7', opacity: 0.75 }} />
+            Encaissée
+          </div>
+          <div className="flex items-center gap-1.5" style={{ color: '#3d5470', fontSize: 11 }}>
+            <div className="w-2.5 h-2.5 rounded-full" style={{ border: '1.5px dashed #4e79a7', opacity: 0.6 }} />
+            En attente
+          </div>
+          <div className="flex items-center gap-1.5" style={{ color: '#3d5470', fontSize: 11 }}>
+            <div className="w-px h-3" style={{ background: '#ef4444' }} />
+            Aujourd'hui
+          </div>
         </div>
       </div>
 
@@ -417,22 +432,6 @@ const Timeline: React.FC<TimelineProps> = ({ invoices }) => {
               );
             })}
           </svg>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 mt-4 px-2">
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <div className="w-4 h-4 rounded-full bg-blue-400 opacity-75" />
-          <span>Encaissée</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <div className="w-4 h-4 rounded-full bg-blue-400 opacity-35 border border-blue-400 border-dashed" />
-          <span>En attente</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <div className="w-px h-4 bg-red-500" />
-          <span>Aujourd'hui</span>
         </div>
       </div>
 

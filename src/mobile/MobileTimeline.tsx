@@ -7,6 +7,7 @@ import { buildClientColors } from '../utils/colors';
 interface Props { invoices: Invoice[] }
 
 const MERGE_DAYS = 14;
+const ZOOM_PERCENTS = [0.2, 0.4, 0.6, 0.8, 1.0];
 const TOP_PAD = 26;
 const BOTTOM_PAD = 6;
 const LEFT_PAD = 2;
@@ -41,9 +42,9 @@ function amtLabel(ttc: number): string {
   return `${Math.round(abs)}`;
 }
 
-// Min scale to start showing client name — largest clients appear first
+// Min scale to start showing client name — largest-revenue clients appear first
 function nameMinScale(idx: number): number {
-  return 0.9 + idx * 0.3;
+  return 1.2 + idx * 0.35;
 }
 
 interface TouchState {
@@ -60,6 +61,10 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
+  const [zoom, setZoom] = useState(4);        // 0-4 → 20/40/60/80/100% of clients
+  const [laneScale, setLaneScale] = useState(1); // vertical spacing multiplier
+
+  const svgTotalHRef = useRef(size.h);        // updated each render for Y clamping
 
   const ts = useRef<TouchState>({ touches: [], startScale: 1, startTx: 0, startTy: 0, startDist: 1 });
   const lastTap = useRef(0);
@@ -73,35 +78,50 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   const active = useMemo(() => invoices.filter((i) => !i.cancelled), [invoices]);
 
   const colorMap = useMemo(() => {
-    const clients = [...new Set(active.map((i) => i.client))];
+    const cmap = new Map<string, number>();
+    for (const inv of active) cmap.set(inv.client, (cmap.get(inv.client) ?? 0) + inv.ttc);
+    const clients = [...cmap.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
     return buildClientColors(clients);
   }, [active]);
 
-  const { lanes, allBubbles, months, todayX, laneH, avgMonthSpacing } = useMemo(() => {
-    const empty = { lanes: [], allBubbles: [], months: [], todayX: 0, laneH: 40, avgMonthSpacing: 60 };
+  const maxClients = useMemo(() => {
+    const total = new Set(active.map((i) => i.client)).size;
+    return Math.max(1, Math.round(total * ZOOM_PERCENTS[zoom]));
+  }, [active, zoom]);
+
+  const { lanes, allBubbles, months, todayX, effectiveLaneH, svgTotalH, avgMonthSpacing } = useMemo(() => {
+    const empty = { lanes: [], allBubbles: [], months: [], todayX: 0, effectiveLaneH: 40, svgTotalH: size.h, avgMonthSpacing: 60 };
     if (!active.length) return empty;
 
     const { w, h } = size;
     const chartW = w - LEFT_PAD - RIGHT_PAD;
     const chartH = h - TOP_PAD - BOTTOM_PAD;
 
-    // Group by client — sort by first invoice date ascending (oldest client at top)
+    // Group by client
     const cmap = new Map<string, Invoice[]>();
     for (const inv of active) {
       if (!cmap.has(inv.client)) cmap.set(inv.client, []);
       cmap.get(inv.client)!.push(inv);
     }
-    const clientsSorted = [...cmap.entries()]
-      .map(([name, invs]) => ({
-        name,
-        invs,
-        firstDate: Math.min(...invs.map((i) => i.date.getTime())),
-        rawBubbles: mergeBubbles(invs),
+
+    // Select top-N by TTC, then re-sort by first invoice date (oldest first = top)
+    const byTtc = [...cmap.entries()]
+      .map(([name, invs]) => ({ name, invs, total: invs.reduce((s, i) => s + i.ttc, 0) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, maxClients);
+
+    const clientsSorted = byTtc
+      .map((c) => ({
+        ...c,
+        firstDate: Math.min(...c.invs.map((i) => i.date.getTime())),
+        rawBubbles: mergeBubbles(c.invs),
       }))
       .sort((a, b) => a.firstDate - b.firstDate);
 
     const numClients = Math.max(1, clientsSorted.length);
     const laneH = chartH / numClients;
+    const effectiveLaneH = laneH * laneScale;
+    const svgTotalH = TOP_PAD + numClients * effectiveLaneH + BOTTOM_PAD;
 
     // Date range
     const allTs = active.map((i) => i.date.getTime());
@@ -111,14 +131,9 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     const range = maxT - minT || 1;
     const xOf = (t: number) => LEFT_PAD + ((t - minT) / range) * chartW;
 
-    // maxR based on chart height — bubbles can exceed lane height
+    // maxR — based on chart height (bubbles can exceed lane height)
     const maxR = Math.min(chartH / 4.5, 50);
-
-    // Compute maxTTC from merged bubbles (not individual invoices)
-    const maxTTC = Math.max(
-      ...clientsSorted.flatMap((c) => c.rawBubbles.map((b) => Math.abs(b.ttc))),
-      1,
-    );
+    const maxTTC = Math.max(...clientsSorted.flatMap((c) => c.rawBubbles.map((b) => Math.abs(b.ttc))), 1);
     const rOf = (ttc: number) => Math.max(MIN_R, Math.sqrt(Math.abs(ttc) / maxTTC) * maxR);
 
     // Month markers
@@ -140,7 +155,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     const todayX = xOf(today.getTime());
 
     const lanes = clientsSorted.map((c, idx) => {
-      const cy = TOP_PAD + (idx + 0.5) * laneH;
+      const cy = TOP_PAD + (idx + 0.5) * effectiveLaneH;
       const color = colorMap.get(c.name) ?? '#888';
       const bubbles = c.rawBubbles.map((b) => ({
         cx: xOf(b.date.getTime()),
@@ -151,36 +166,32 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
         label: amtLabel(b.ttc),
         color,
       }));
-      // Rightmost edge for client name placement
-      const rightmostX = bubbles.length
-        ? Math.max(...bubbles.map((b) => b.cx + b.r))
-        : xOf(c.firstDate);
-      return { name: c.name, color, cy, laneTop: TOP_PAD + idx * laneH, idx, bubbles, rightmostX };
+      const rightmostX = bubbles.length ? Math.max(...bubbles.map((b) => b.cx + b.r)) : xOf(c.firstDate);
+      return { name: c.name, color, cy, laneTop: TOP_PAD + idx * effectiveLaneH, idx, bubbles, rightmostX };
     });
 
-    // Flatten all bubbles for z-order rendering (largest first = behind)
-    const allBubbles = lanes
-      .flatMap((lane) => lane.bubbles)
-      .sort((a, b) => b.r - a.r);
+    const allBubbles = lanes.flatMap((lane) => lane.bubbles).sort((a, b) => b.r - a.r);
 
-    return { lanes, allBubbles, months, todayX, laneH, avgMonthSpacing };
-  }, [size, active, colorMap]);
+    return { lanes, allBubbles, months, todayX, effectiveLaneH, svgTotalH, avgMonthSpacing };
+  }, [size, active, colorMap, maxClients, laneScale]);
+
+  // Keep svgTotalHRef in sync for use in clamp
+  svgTotalHRef.current = svgTotalH;
 
   const { w, h } = size;
 
   const clamp = useCallback((s: number, x: number, y: number) => {
     const cs = Math.max(1, Math.min(MAX_SCALE, s));
     const cx = Math.max(-(w * cs - w), Math.min(0, x));
-    const cy = Math.max(-(h * cs - h), Math.min(0, y));
+    const totalH = svgTotalHRef.current;
+    const cy = Math.max(-(totalH * cs - h), Math.min(0, y));
     return { s: cs, x: cx, y: cy };
   }, [w, h]);
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
     const t = ts.current;
-    t.startScale = scale;
-    t.startTx = tx;
-    t.startTy = ty;
+    t.startScale = scale; t.startTx = tx; t.startTy = ty;
     t.touches = Array.from(e.touches).map((tt) => ({ id: tt.identifier, x: tt.clientX, y: tt.clientY }));
     if (e.touches.length === 2) {
       t.startDist = Math.hypot(
@@ -223,9 +234,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
     const t = ts.current;
-    t.startScale = scale;
-    t.startTx = tx;
-    t.startTy = ty;
+    t.startScale = scale; t.startTx = tx; t.startTy = ty;
     t.touches = Array.from(e.touches).map((tt) => ({ id: tt.identifier, x: tt.clientX, y: tt.clientY }));
     if (e.touches.length === 2) {
       t.startDist = Math.hypot(
@@ -235,138 +244,175 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     }
   }, [scale, tx, ty]);
 
-  if (!lanes.length) return (
-    <div className="flex items-center justify-center flex-1 text-sm" style={{ color: '#3d5470' }}>
-      Aucune donnée
-    </div>
-  );
+  const isAll = zoom === ZOOM_PERCENTS.length - 1;
+  const sliderLabel = isAll ? 'Tous' : `Top ${maxClients}`;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-        position: 'relative',
-        touchAction: 'none',
-        background: '#080d17',
-      }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-    >
-      {scale > 1.3 && (
-        <div style={{
-          position: 'absolute', bottom: 8, right: 10, zIndex: 10,
-          fontSize: 9, color: '#1e3048', pointerEvents: 'none',
-        }}>
-          double-tap pour réinitialiser
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#080d17' }}>
+
+      {/* Control strip */}
+      <div style={{
+        flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2,
+        padding: '5px 14px 6px', borderBottom: '1px solid #1a2740',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, color: '#3d5470', width: 44, flexShrink: 0 }}>Clients</span>
+          <input type="range" min={0} max={4} step={1} value={zoom}
+            onChange={(e) => { setZoom(Number(e.target.value)); setScale(1); setTx(0); setTy(0); }}
+            style={{ flex: 1, accentColor: '#10b981', cursor: 'pointer', height: 14 }} />
+          <span style={{ fontSize: 10, color: '#6b8aaa', width: 44, textAlign: 'right', flexShrink: 0 }}>
+            {sliderLabel}
+          </span>
         </div>
-      )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, color: '#3d5470', width: 44, flexShrink: 0 }}>Espace</span>
+          <input type="range" min={1} max={3} step={0.5} value={laneScale}
+            onChange={(e) => { setLaneScale(Number(e.target.value)); setTy(0); }}
+            style={{ flex: 1, accentColor: '#10b981', cursor: 'pointer', height: 14 }} />
+          <span style={{ fontSize: 10, color: '#6b8aaa', width: 44, textAlign: 'right', flexShrink: 0 }}>
+            {laneScale === 1 ? 'Compact' : `×${laneScale}`}
+          </span>
+        </div>
+      </div>
 
-      <svg
-        width={w}
-        height={h}
+      {/* Chart */}
+      <div
+        ref={containerRef}
         style={{
-          display: 'block',
-          transformOrigin: '0 0',
-          transform: `translate(${tx}px,${ty}px) scale(${scale})`,
-          overflow: 'visible',
+          flex: 1, overflow: 'hidden', position: 'relative', touchAction: 'none',
         }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
-        {/* Alternating row backgrounds */}
-        {lanes.map((lane, idx) => idx % 2 === 1 ? (
-          <rect key={idx} x={0} y={lane.laneTop} width={w} height={laneH} fill="#0d1a2e" />
-        ) : null)}
-
-        {/* Lane separator lines */}
-        <line x1={0} y1={TOP_PAD} x2={w} y2={TOP_PAD} stroke="#1a2740" strokeWidth={0.5 / scale} />
-        {lanes.map((_, idx) => (
-          <line key={idx}
-            x1={0} y1={TOP_PAD + (idx + 1) * laneH}
-            x2={w} y2={TOP_PAD + (idx + 1) * laneH}
-            stroke="#1a2740" strokeWidth={0.5 / scale} />
-        ))}
-
-        {/* Month grid lines — always rendered */}
-        {months.map((m, i) => (
-          <line key={i}
-            x1={m.x} y1={TOP_PAD} x2={m.x} y2={h - BOTTOM_PAD}
-            stroke="#141e2e" strokeWidth={1 / scale} />
-        ))}
-
-        {/* Adaptive time labels: year-only → quarters → months */}
-        {months.map((m, i) => {
-          const visualSpacing = avgMonthSpacing * scale;
-          const isYear = !!m.label.match(/^\d{4}$/);
-          const isQuarter = i % 3 === 0;
-          const show = visualSpacing >= 50 || (visualSpacing >= 20 ? isQuarter : isYear);
-          if (!show) return null;
-          return (
-            <text key={i}
-              x={m.x + 3 / scale} y={TOP_PAD - 6 / scale}
-              fontSize={9 / scale}
-              fill={isYear ? '#4a6080' : '#2d4060'}
-              fontWeight={isYear ? '600' : '400'}
-              fontFamily="Inter, system-ui, sans-serif">
-              {m.label}
-            </text>
-          );
-        })}
-
-        {/* Today line */}
-        <line x1={todayX} y1={TOP_PAD} x2={todayX} y2={h - BOTTOM_PAD}
-          stroke="rgba(16,185,129,0.4)" strokeWidth={1 / scale} />
-        <text x={todayX + 3 / scale} y={TOP_PAD - 6 / scale}
-          fontSize={9 / scale} fill="#10b981"
-          fontFamily="Inter, system-ui, sans-serif">
-          auj.
-        </text>
-
-        {/* All bubbles — largest rendered first (behind smaller ones) */}
-        {allBubbles.map((b, i) => (
-          <circle key={i}
-            cx={b.cx} cy={b.cy} r={b.r}
-            fill={b.isPending ? 'rgba(245,158,11,0.15)' : `${b.color}25`}
-            stroke={b.isPending ? '#f59e0b' : b.color}
-            strokeWidth={1.2 / scale} />
-        ))}
-
-        {/* Amount labels — appear when bubble is large enough on screen */}
-        {allBubbles.map((b, i) =>
-          b.r * scale > LABEL_MIN_SCREEN_R ? (
-            <text key={i}
-              x={b.cx} y={b.cy + Math.min(9 / scale, b.r * 0.5)}
-              textAnchor="middle"
-              fontSize={Math.min(9 / scale, b.r * 0.6)}
-              fill={b.isPending ? '#fbbf24' : b.color}
-              fontWeight="600"
-              fontFamily="Inter, system-ui, sans-serif">
-              {b.label}
-            </text>
-          ) : null
+        {scale > 1.3 && (
+          <div style={{
+            position: 'absolute', bottom: 8, right: 10, zIndex: 10,
+            fontSize: 9, color: '#1e3048', pointerEvents: 'none',
+          }}>
+            double-tap · réinitialiser
+          </div>
         )}
 
-        {/* Client name — appears to the right of the last bubble, fades in by revenue rank */}
+        <svg
+          width={w}
+          height={svgTotalH}
+          style={{
+            display: 'block', transformOrigin: '0 0',
+            transform: `translate(${tx}px,${ty}px) scale(${scale})`,
+            overflow: 'visible',
+          }}
+        >
+          {/* Alternating row backgrounds */}
+          {lanes.map((lane, idx) => idx % 2 === 1 ? (
+            <rect key={idx} x={0} y={lane.laneTop} width={w} height={effectiveLaneH} fill="#0d1a2e" />
+          ) : null)}
+
+          {/* Lane separator lines */}
+          <line x1={0} y1={TOP_PAD} x2={w} y2={TOP_PAD} stroke="#1a2740" strokeWidth={0.5 / scale} />
+          {lanes.map((_, idx) => (
+            <line key={idx}
+              x1={0} y1={TOP_PAD + (idx + 1) * effectiveLaneH}
+              x2={w} y2={TOP_PAD + (idx + 1) * effectiveLaneH}
+              stroke="#1a2740" strokeWidth={0.5 / scale} />
+          ))}
+
+          {/* Month grid lines */}
+          {months.map((m, i) => (
+            <line key={i}
+              x1={m.x} y1={TOP_PAD} x2={m.x} y2={svgTotalH - BOTTOM_PAD}
+              stroke="#141e2e" strokeWidth={1 / scale} />
+          ))}
+
+          {/* Adaptive time labels: year-only → quarters → months */}
+          {months.map((m, i) => {
+            const visualSpacing = avgMonthSpacing * scale;
+            const isYear = !!m.label.match(/^\d{4}$/);
+            const isQuarter = i % 3 === 0;
+            const show = visualSpacing >= 50 || (visualSpacing >= 20 ? isQuarter : isYear);
+            if (!show) return null;
+            return (
+              <text key={i}
+                x={m.x + 3 / scale} y={TOP_PAD - 6 / scale}
+                fontSize={9 / scale} fill={isYear ? '#4a6080' : '#2d4060'}
+                fontWeight={isYear ? '600' : '400'}
+                fontFamily="Inter, system-ui, sans-serif">
+                {m.label}
+              </text>
+            );
+          })}
+
+          {/* Today line */}
+          <line x1={todayX} y1={TOP_PAD} x2={todayX} y2={svgTotalH - BOTTOM_PAD}
+            stroke="rgba(16,185,129,0.4)" strokeWidth={1 / scale} />
+          <text x={todayX + 3 / scale} y={TOP_PAD - 6 / scale}
+            fontSize={9 / scale} fill="#10b981"
+            fontFamily="Inter, system-ui, sans-serif">
+            auj.
+          </text>
+
+          {/* Bubbles — largest first (behind smaller ones) */}
+          {allBubbles.map((b, i) => (
+            <circle key={i}
+              cx={b.cx} cy={b.cy} r={b.r}
+              fill={b.isPending ? 'rgba(245,158,11,0.15)' : `${b.color}25`}
+              stroke={b.isPending ? '#f59e0b' : b.color}
+              strokeWidth={1.2 / scale} />
+          ))}
+
+          {/* Amount labels — appear when bubble is large enough on screen */}
+          {allBubbles.map((b, i) =>
+            b.r * scale > LABEL_MIN_SCREEN_R ? (
+              <text key={i}
+                x={b.cx} y={b.cy + Math.min(9 / scale, b.r * 0.5)}
+                textAnchor="middle"
+                fontSize={Math.min(9 / scale, b.r * 0.6)}
+                fill={b.isPending ? '#fbbf24' : b.color}
+                fontWeight="600"
+                fontFamily="Inter, system-ui, sans-serif">
+                {b.label}
+              </text>
+            ) : null
+          )}
+        </svg>
+
+        {/* Client name labels — HTML overlay so they're always readable and never clipped.
+            Position computed from SVG coords → screen coords via current transform. */}
         {lanes.map((lane) => {
           const minS = nameMinScale(lane.idx);
           if (scale < minS) return null;
+
+          // Screen position of the right edge of the last bubble
+          const screenX = lane.rightmostX * scale + tx;
+          const screenY = lane.cy * scale + ty;
+
+          // Only render if the label anchor is on screen
+          if (screenX < -20 || screenX > w + 20) return null;
+          if (screenY < 0 || screenY > h) return null;
+
           const opacity = Math.min(1, (scale - minS) / 0.4);
           return (
-            <text key={lane.idx}
-              x={lane.rightmostX + 5 / scale}
-              y={lane.cy + 4 / scale}
-              fontSize={10 / scale}
-              fill={lane.color}
-              fontWeight="500"
-              opacity={opacity}
-              fontFamily="Inter, system-ui, sans-serif">
-              {lane.name.length > 20 ? lane.name.slice(0, 18) + '…' : lane.name}
-            </text>
+            <div
+              key={lane.idx}
+              style={{
+                position: 'absolute',
+                left: Math.min(screenX + 5, w - 4), // never overflow right edge
+                top: screenY - 7,
+                fontSize: 10,
+                fontWeight: 500,
+                color: lane.color,
+                opacity,
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                textShadow: '0 0 6px #080d17',
+              }}
+            >
+              {lane.name.length > 18 ? lane.name.slice(0, 16) + '…' : lane.name}
+            </div>
           );
         })}
-      </svg>
+      </div>
     </div>
   );
 };

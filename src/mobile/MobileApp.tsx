@@ -175,9 +175,9 @@ const MobileDashboard: React.FC<{
     <div className="flex flex-col min-h-screen" style={{ background: '#080d17' }}>
 
       {/* Header */}
-      <div className="flex-shrink-0 px-4 pt-12 pb-4"
+      <div className="flex-shrink-0 px-4 pt-10 pb-3"
         style={{ borderBottom: '1px solid #1a2740' }}>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg flex items-center justify-center"
               style={{ background: '#10b981' }}>
@@ -194,28 +194,25 @@ const MobileDashboard: React.FC<{
           </button>
         </div>
 
-        {/* KPI row */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl px-3 py-2.5"
-            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
-            <div className="text-xs mb-0.5" style={{ color: '#3d5470' }}>Encaissé</div>
-            <div className="text-base font-bold" style={{ color: '#10b981' }}>{fmt(totalPaid)}</div>
+        {/* KPI row — compact single-line pills */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)' }}>
+            <span className="text-xs" style={{ color: '#3d5470' }}>Encaissé</span>
+            <span className="text-sm font-bold" style={{ color: '#10b981' }}>{fmt(totalPaid)}</span>
           </div>
-          {totalPending > 0 ? (
-            <div className="rounded-xl px-3 py-2.5"
-              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-              <div className="text-xs mb-0.5" style={{ color: '#3d5470' }}>En attente</div>
-              <div className="text-base font-bold" style={{ color: '#fbbf24' }}>{fmt(totalPending)}</div>
-            </div>
-          ) : (
-            <div className="rounded-xl px-3 py-2.5"
-              style={{ background: '#0d1526', border: '1px solid #1a2740' }}>
-              <div className="text-xs mb-0.5" style={{ color: '#3d5470' }}>Clients</div>
-              <div className="text-base font-bold text-white">
-                {new Set(active.map((i) => i.client)).size}
-              </div>
+          {totalPending > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
+              <span className="text-xs" style={{ color: '#3d5470' }}>En attente</span>
+              <span className="text-sm font-bold" style={{ color: '#fbbf24' }}>{fmt(totalPending)}</span>
             </div>
           )}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg ml-auto"
+            style={{ background: '#0d1526', border: '1px solid #1a2740' }}>
+            <span className="text-xs" style={{ color: '#3d5470' }}>Clients</span>
+            <span className="text-sm font-semibold text-white">{new Set(active.map((i) => i.client)).size}</span>
+          </div>
         </div>
       </div>
 
