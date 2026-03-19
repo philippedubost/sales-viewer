@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { Invoice } from '../types';
 import { buildClientColors } from '../utils/colors';
+import { fmt } from '../utils/format';
 
 interface Props { invoices: Invoice[] }
 
@@ -42,11 +43,21 @@ function amtLabel(ttc: number): string {
   return `${(abs / 1000).toFixed(1)}k`;
 }
 
-function nameMinScale(idx: number): number {
-  return 1.2 + idx * 0.35;
+/* ── Types ── */
+interface BubbleData {
+  cx: number; cy: number; r: number; ttc: number;
+  isPending: boolean; label: string; color: string; date: Date;
+}
+interface LaneData {
+  name: string; color: string; cy: number; laneTop: number;
+  idx: number; revenueRank: number; bubbles: BubbleData[]; rightmostX: number; leftmostX: number;
+}
+interface BubblePopupInfo {
+  screenX: number; screenY: number;
+  clientName: string; ttc: number; date: Date; isPending: boolean; color: string;
 }
 
-/* ── Vertical slider for the settings modal ── */
+/* ── Vertical slider ── */
 const VSlider: React.FC<{
   label: string;
   value: number;
@@ -60,19 +71,22 @@ const VSlider: React.FC<{
     <span style={{ fontSize: 11, color: '#6b8aaa', fontWeight: 500, fontFamily: 'Inter, system-ui, sans-serif' }}>
       {label}
     </span>
-    <div style={{ height: 110, width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+    <div style={{ height: 160, width: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
       <input
         type="range" min={min} max={max} step={step} value={value}
+        className="vslider-input"
         onChange={(e) => onChange(Number(e.target.value))}
         onTouchStart={(e) => e.stopPropagation()}
         onTouchMove={(e) => { e.stopPropagation(); onChange(Number((e.target as HTMLInputElement).value)); }}
         style={{
           position: 'absolute',
-          width: 110,
-          accentColor: '#10b981',
+          width: 160,
           transform: 'rotate(-90deg)',
           cursor: 'pointer',
           touchAction: 'none',
+          appearance: 'none' as React.CSSProperties['appearance'],
+          WebkitAppearance: 'none',
+          background: 'transparent',
         }}
       />
     </div>
@@ -88,6 +102,9 @@ interface TouchState {
   startTx: number;
   startTy: number;
   startDist: number;
+  tapStartX: number;
+  tapStartY: number;
+  tapStartTime: number;
 }
 
 const MobileTimeline: React.FC<Props> = ({ invoices }) => {
@@ -99,9 +116,14 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   const [zoom, setZoom] = useState(4);
   const [laneScale, setLaneScale] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [popup, setPopup] = useState<BubblePopupInfo | null>(null);
 
   const svgTotalHRef = useRef(size.h);
-  const ts = useRef<TouchState>({ touches: [], startScale: 1, startTx: 0, startTy: 0, startDist: 1 });
+  const lanesRef = useRef<LaneData[]>([]);
+  const ts = useRef<TouchState>({
+    touches: [], startScale: 1, startTx: 0, startTy: 0, startDist: 1,
+    tapStartX: 0, tapStartY: 0, tapStartTime: 0,
+  });
   const lastTap = useRef(0);
 
   useEffect(() => {
@@ -125,7 +147,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   }, [active, zoom]);
 
   const { lanes, allBubbles, months, todayX, effectiveLaneH, svgTotalH, avgMonthSpacing } = useMemo(() => {
-    const empty = { lanes: [], allBubbles: [], months: [], todayX: 0, effectiveLaneH: 40, svgTotalH: size.h, avgMonthSpacing: 60 };
+    const empty = { lanes: [] as LaneData[], allBubbles: [] as BubbleData[], months: [] as { x: number; label: string }[], todayX: 0, effectiveLaneH: 40, svgTotalH: size.h, avgMonthSpacing: 60 };
     if (!active.length) return empty;
 
     const { w, h } = size;
@@ -141,7 +163,8 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     const byTtc = [...cmap.entries()]
       .map(([name, invs]) => ({ name, invs, total: invs.reduce((s, i) => s + i.ttc, 0) }))
       .sort((a, b) => b.total - a.total)
-      .slice(0, maxClients);
+      .slice(0, maxClients)
+      .map((c, revenueRank) => ({ ...c, revenueRank }));
 
     const clientsSorted = byTtc
       .map((c) => ({
@@ -181,17 +204,17 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
 
     const todayX = xOf(today.getTime());
 
-    const lanes = clientsSorted.map((c, idx) => {
+    const lanes: LaneData[] = clientsSorted.map((c, idx) => {
       const cy = TOP_PAD + (idx + 0.5) * effectiveLaneH;
       const color = colorMap.get(c.name) ?? '#888';
-      const bubbles = c.rawBubbles.map((b) => ({
+      const bubbles: BubbleData[] = c.rawBubbles.map((b) => ({
         cx: xOf(b.date.getTime()), cy,
         r: rOf(b.ttc), ttc: b.ttc, isPending: b.isPending,
-        label: amtLabel(b.ttc), color,
+        label: amtLabel(b.ttc), color, date: b.date,
       }));
       const rightmostX = bubbles.length ? Math.max(...bubbles.map((b) => b.cx + b.r)) : xOf(c.firstDate);
       const leftmostX  = bubbles.length ? Math.min(...bubbles.map((b) => b.cx - b.r)) : xOf(c.firstDate);
-      return { name: c.name, color, cy, laneTop: TOP_PAD + idx * effectiveLaneH, idx, bubbles, rightmostX, leftmostX };
+      return { name: c.name, color, cy, laneTop: TOP_PAD + idx * effectiveLaneH, idx, revenueRank: c.revenueRank, bubbles, rightmostX, leftmostX };
     });
 
     const allBubbles = lanes.flatMap((l) => l.bubbles).sort((a, b) => b.r - a.r);
@@ -199,6 +222,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   }, [size, active, colorMap, maxClients, laneScale]);
 
   svgTotalHRef.current = svgTotalH;
+  lanesRef.current = lanes;
 
   const { w, h } = size;
 
@@ -219,8 +243,14 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
       t.startDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     }
     if (e.touches.length === 1) {
+      t.tapStartX = e.touches[0].clientX;
+      t.tapStartY = e.touches[0].clientY;
+      t.tapStartTime = Date.now();
       const now = Date.now();
-      if (now - lastTap.current < 300) { setScale(1); setTx(0); setTy(0); }
+      if (now - lastTap.current < 300) {
+        setScale(1); setTx(0); setTy(0);
+        setPopup(null);
+      }
       lastTap.current = now;
     }
   }, [scale, tx, ty, showSettings]);
@@ -248,6 +278,42 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     if (showSettings) return;
     e.preventDefault();
     const t = ts.current;
+
+    // Tap detection — single finger quick release
+    if (e.changedTouches.length === 1 && t.touches.length === 1) {
+      const touch = e.changedTouches[0];
+      const duration = Date.now() - t.tapStartTime;
+      const moved = Math.hypot(touch.clientX - t.tapStartX, touch.clientY - t.tapStartY);
+      if (duration < 250 && moved < 12) {
+        // Find bubble under tap
+        let best: { lane: LaneData; bub: BubbleData; dist: number } | null = null;
+        for (const lane of lanesRef.current) {
+          for (const bub of lane.bubbles) {
+            const sx = bub.cx * scale + tx;
+            const sy = bub.cy * scale + ty;
+            const dist = Math.hypot(touch.clientX - sx, touch.clientY - sy);
+            const hitR = Math.max(bub.r * scale + 6, 18);
+            if (dist <= hitR && (!best || dist < best.dist)) {
+              best = { lane, bub, dist };
+            }
+          }
+        }
+        if (best) {
+          setPopup({
+            screenX: best.bub.cx * scale + tx,
+            screenY: best.bub.cy * scale + ty,
+            clientName: best.lane.name,
+            ttc: best.bub.ttc,
+            date: best.bub.date,
+            isPending: best.bub.isPending,
+            color: best.bub.color,
+          });
+        } else {
+          setPopup(null);
+        }
+      }
+    }
+
     t.startScale = scale; t.startTx = tx; t.startTy = ty;
     t.touches = Array.from(e.touches).map((tt) => ({ id: tt.identifier, x: tt.clientX, y: tt.clientY }));
     if (e.touches.length === 2)
@@ -255,10 +321,36 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
   }, [scale, tx, ty, showSettings]);
 
   const isAll = zoom === ZOOM_PERCENTS.length - 1;
-  const sliderLabel = isAll ? 'Tous' : `Top ${maxClients}`;
+
+  /* Popup positioning */
+  const popupW = 190;
+  const popupH = 86;
+  const popupLeft = popup ? Math.max(8, Math.min(popup.screenX - popupW / 2, w - popupW - 8)) : 0;
+  const popupTop = popup
+    ? (popup.screenY - 20 > popupH + 8 ? popup.screenY - popupH - 12 : popup.screenY + 12)
+    : 0;
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#080d17' }}>
+
+      {/* Slider CSS */}
+      <style>{`
+        input[type=range].vslider-input::-webkit-slider-runnable-track {
+          height: 12px; background: #1e3048; border-radius: 6px;
+        }
+        input[type=range].vslider-input::-webkit-slider-thumb {
+          -webkit-appearance: none; width: 42px; height: 42px; border-radius: 50%;
+          background: #10b981; cursor: pointer; margin-top: -15px;
+          box-shadow: 0 0 0 6px rgba(16,185,129,0.2);
+        }
+        input[type=range].vslider-input::-moz-range-track {
+          height: 12px; background: #1e3048; border-radius: 6px;
+        }
+        input[type=range].vslider-input::-moz-range-thumb {
+          width: 42px; height: 42px; border-radius: 50%;
+          background: #10b981; border: none; cursor: pointer;
+        }
+      `}</style>
 
       {/* Chart */}
       <div
@@ -329,9 +421,10 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           )}
         </svg>
 
-        {/* Client name labels — HTML overlay, left/right based on screen position */}
+        {/* Client name labels — revealed progressively by revenue rank as zoom increases */}
         {lanes.map((lane) => {
-          const minS = nameMinScale(lane.idx);
+          // Biggest revenue (rank 0) appears at scale 1, smaller amounts need more zoom
+          const minS = 1.0 + lane.revenueRank * 0.3;
           if (scale < minS) return null;
 
           const rightScreenX = lane.rightmostX * scale + tx;
@@ -344,11 +437,10 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           const spaceLeft  = leftScreenX;
           const useRight = spaceRight >= spaceLeft;
 
-          // Don't render if neither side has enough room (both bubbles off-screen)
           if (useRight && rightScreenX > w + 10) return null;
           if (!useRight && leftScreenX < -10) return null;
 
-          const opacity = Math.min(1, (scale - minS) / 0.4);
+          const opacity = Math.min(1, (scale - minS) / 0.3);
           return (
             <div key={lane.idx} style={{
               position: 'absolute',
@@ -371,18 +463,64 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
         })}
       </div>
 
+      {/* Bubble detail popup */}
+      {popup && (
+        <div style={{
+          position: 'absolute',
+          left: popupLeft,
+          top: popupTop,
+          width: popupW,
+          zIndex: 50,
+          background: 'rgba(13,21,38,0.95)',
+          border: `1px solid ${popup.color}40`,
+          borderRadius: 12,
+          padding: '10px 14px',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          pointerEvents: 'auto',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: popup.color, fontFamily: 'Inter, system-ui, sans-serif', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {popup.clientName}
+            </span>
+            <button
+              onTouchEnd={(e) => { e.stopPropagation(); setPopup(null); }}
+              onClick={() => setPopup(null)}
+              style={{ background: 'none', border: 'none', color: '#3d5470', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 0, marginLeft: 6, flexShrink: 0 }}>
+              ×
+            </button>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: popup.isPending ? '#fbbf24' : '#e2e8f0', fontFamily: 'Inter, system-ui, sans-serif', marginBottom: 4 }}>
+            {fmt(popup.ttc)}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: '#3d5470', fontFamily: 'Inter, system-ui, sans-serif' }}>
+              {format(popup.date, 'd MMM yyyy', { locale: fr })}
+            </span>
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+              background: popup.isPending ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)',
+              color: popup.isPending ? '#fbbf24' : '#10b981',
+              fontFamily: 'Inter, system-ui, sans-serif',
+            }}>
+              {popup.isPending ? 'En attente' : 'Encaissée'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Gear button */}
       <button
-        onClick={() => setShowSettings(true)}
+        onClick={() => { setShowSettings(true); setPopup(null); }}
         style={{
-          position: 'absolute', top: 8, right: 8, zIndex: 20,
-          width: 32, height: 32, borderRadius: '50%',
+          position: 'absolute', bottom: 14, left: 14, zIndex: 20,
+          width: 64, height: 64, borderRadius: '50%',
           background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
         }}
       >
-        <svg width="16" height="16" fill="none" stroke="#10b981" viewBox="0 0 24 24">
+        <svg width="32" height="32" fill="none" stroke="#10b981" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
             d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -396,8 +534,8 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           style={{
             position: 'absolute', inset: 0, zIndex: 40,
             background: 'rgba(8,13,23,0.5)',
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
-            paddingTop: 48, paddingRight: 12,
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-start',
+            paddingBottom: 88, paddingLeft: 14,
           }}
         >
           <div
@@ -409,7 +547,6 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
               minWidth: 170,
             }}
           >
-            {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: '#6b8aaa', fontFamily: 'Inter, system-ui, sans-serif' }}>
                 Vue
@@ -419,8 +556,6 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
                 ×
               </button>
             </div>
-
-            {/* Vertical sliders */}
             <div style={{ display: 'flex', gap: 36, justifyContent: 'center' }}>
               <VSlider
                 label="Clients"

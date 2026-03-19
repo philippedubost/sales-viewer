@@ -13,14 +13,26 @@ interface MobileAppProps { initialInvoices?: Invoice[] }
 const MobileApp: React.FC<MobileAppProps> = ({ initialInvoices }) => {
   const [invoices, setInvoices] = useState<Invoice[] | null>(initialInvoices ?? null);
   const [tab, setTab] = useState<Tab>('timeline');
+  const [showHome, setShowHome] = useState(false);
 
-  if (!invoices) return <MobileUpload onData={setInvoices} />;
-  return <MobileDashboard invoices={invoices} tab={tab} setTab={setTab} onReset={() => setInvoices(null)} />;
+  const handleData = (i: Invoice[]) => { setInvoices(i); setShowHome(false); };
+
+  if (!invoices) return <MobileUpload onData={handleData} />;
+  return (
+    <MobileDashboard
+      invoices={invoices}
+      tab={tab}
+      setTab={(t) => { setTab(t); setShowHome(false); }}
+      showHome={showHome}
+      onShowHome={() => setShowHome(true)}
+      onNewData={handleData}
+    />
+  );
 };
 
-/* ─── Upload ─── */
+/* ─── Upload content (reusable) ─── */
 
-const MobileUpload: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) => {
+const UploadContent: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) => {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,11 +57,10 @@ const MobileUpload: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) 
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: '#080d17' }}>
+    <div className="flex flex-col items-center px-6 py-8" style={{ background: '#080d17', minHeight: '100%' }}>
 
       {/* Logo */}
-      <div className="flex items-center gap-2.5 mb-12">
+      <div className="flex items-center gap-2.5 mb-10">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center"
           style={{ background: '#10b981' }}>
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,7 +72,7 @@ const MobileUpload: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) 
       </div>
 
       <h1 className="text-2xl font-bold text-white text-center mb-2">Vos ventes, en clair</h1>
-      <p className="text-sm text-center mb-10" style={{ color: '#3d5470' }}>
+      <p className="text-sm text-center mb-8" style={{ color: '#3d5470' }}>
         Importez votre export PennyLane
       </p>
 
@@ -120,6 +131,14 @@ const MobileUpload: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) 
   );
 };
 
+/* ─── Full-page upload (initial, no nav) ─── */
+
+const MobileUpload: React.FC<{ onData: (i: Invoice[]) => void }> = ({ onData }) => (
+  <div className="min-h-screen" style={{ background: '#080d17' }}>
+    <UploadContent onData={onData} />
+  </div>
+);
+
 /* ─── Dashboard ─── */
 
 const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -154,44 +173,48 @@ const MobileDashboard: React.FC<{
   invoices: Invoice[];
   tab: Tab;
   setTab: (t: Tab) => void;
-  onReset: () => void;
-}> = ({ invoices, tab, setTab, onReset }) => {
+  showHome: boolean;
+  onShowHome: () => void;
+  onNewData: (i: Invoice[]) => void;
+}> = ({ invoices, tab, setTab, showHome, onShowHome, onNewData }) => {
   const active = invoices.filter((i) => !i.cancelled);
   const paid = active.filter((i) => i.status === 'Encaissée');
   const pending = active.filter((i) => i.status !== 'Encaissée');
   const totalPaid = paid.reduce((s, i) => s + i.ttc, 0);
   const totalPending = pending.reduce((s, i) => s + i.ttc, 0);
-  const currentLabel = NAV.find((n) => n.id === tab)?.label ?? '';
 
   return (
     <div className="flex flex-col min-h-screen" style={{ background: '#080d17', overscrollBehaviorY: 'none' }}>
 
-      {/* Header */}
-      <div className="flex-shrink-0 px-4 pb-3"
-        style={{ borderBottom: '1px solid #1a2740', paddingTop: 'max(14px, env(safe-area-inset-top))' }}>
-
-        {/* KPI row — compact single-line pills */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)' }}>
-            <span className="text-xs" style={{ color: '#3d5470' }}>Total</span>
-            <span className="text-sm font-bold" style={{ color: '#10b981' }}>{fmtShort(totalPaid)}</span>
-          </div>
-          {totalPending > 0 && (
+      {/* Header — hide on home screen */}
+      {!showHome && (
+        <div className="flex-shrink-0 px-4 pb-3"
+          style={{ borderBottom: '1px solid #1a2740', paddingTop: 'max(14px, env(safe-area-inset-top))' }}>
+          <div className="flex items-center gap-2">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
-              <span className="text-xs" style={{ color: '#3d5470' }}>Impayés</span>
-              <span className="text-sm font-bold" style={{ color: '#fbbf24' }}>{fmtShort(totalPending)}</span>
+              style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)' }}>
+              <span className="text-xs" style={{ color: '#3d5470' }}>Total</span>
+              <span className="text-sm font-bold" style={{ color: '#10b981' }}>{fmtShort(totalPaid)}</span>
             </div>
-          )}
+            {totalPending > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                <span className="text-xs" style={{ color: '#3d5470' }}>En attente de paiement</span>
+                <span className="text-sm font-bold" style={{ color: '#fbbf24' }}>{fmtShort(totalPending)}</span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
-      <div className="flex-1 flex flex-col min-h-0">
-        {tab === 'timeline' && <MobileTimeline invoices={invoices} />}
-        {tab === 'pie' && <MobilePie invoices={invoices} />}
-        {tab === 'bar' && <MobileBar invoices={invoices} />}
+      <div className="flex-1 flex flex-col min-h-0" style={{ paddingBottom: showHome ? 0 : 0 }}>
+        {showHome
+          ? <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 80 }}><UploadContent onData={onNewData} /></div>
+          : tab === 'timeline' ? <MobileTimeline invoices={invoices} />
+          : tab === 'pie' ? <MobilePie invoices={invoices} />
+          : <MobileBar invoices={invoices} />
+        }
       </div>
 
       {/* Bottom nav */}
@@ -204,8 +227,8 @@ const MobileDashboard: React.FC<{
         {/* Home button */}
         <button
           className="flex flex-col items-center justify-center gap-1 py-3 transition-all duration-150"
-          style={{ color: '#3d5470', width: 52 }}
-          onClick={onReset}>
+          style={{ color: showHome ? '#10b981' : '#3d5470', width: 52 }}
+          onClick={onShowHome}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
               d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -213,11 +236,11 @@ const MobileDashboard: React.FC<{
           <span className="text-xs font-medium">Accueil</span>
         </button>
         {NAV.map((item) => {
-          const active = tab === item.id;
+          const isActive = !showHome && tab === item.id;
           return (
             <button key={item.id}
               className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition-all duration-150"
-              style={{ color: active ? '#10b981' : '#3d5470' }}
+              style={{ color: isActive ? '#10b981' : '#3d5470' }}
               onClick={() => setTab(item.id)}>
               {item.icon}
               <span className="text-xs font-medium">{item.label}</span>
