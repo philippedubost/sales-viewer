@@ -49,9 +49,9 @@ const MobileBar: React.FC<Props> = ({ invoices }) => {
     <div className="flex-1 overflow-y-auto px-4 pt-4 space-y-3" style={{ paddingBottom: 80 }}>
       {yearData.map(({ year, total, clients, color }) => {
         const isOpen = expanded.has(year);
-        const top4 = clients.slice(0, 4);
-        const rest = clients.slice(4);
-        const shown = isOpen ? clients : top4;
+        const top2 = clients.slice(0, 2);
+        const rest = clients.slice(2);
+        const shown = isOpen ? clients : top2;
 
         return (
           <div key={year} className="rounded-2xl overflow-hidden"
@@ -68,17 +68,6 @@ const MobileBar: React.FC<Props> = ({ invoices }) => {
                 ›
               </span>
             </button>
-
-            {/* Year bar */}
-            <div className="px-4 pb-4">
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: '#1a2740' }}>
-                <div className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${(total / Math.max(...yearData.map((y) => y.total), 1)) * 100}%`,
-                    background: color,
-                  }} />
-              </div>
-            </div>
 
             {/* Client rows */}
             {shown.map((client) => {

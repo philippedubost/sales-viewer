@@ -1,13 +1,12 @@
 import React, { useCallback, useRef, useState } from 'react';
 import type { Invoice } from '../types';
 import { parseCSV, SAMPLE_CSV } from '../utils/csvParser';
-import { fmt } from '../utils/format';
+import { fmtShort } from '../utils/format';
 import MobileTimeline from './MobileTimeline';
-import MobileDetails from './MobileDetails';
 import MobilePie from './MobilePie';
 import MobileBar from './MobileBar';
 
-type Tab = 'timeline' | 'pie' | 'bar' | 'details';
+type Tab = 'timeline' | 'pie' | 'bar';
 
 interface MobileAppProps { initialInvoices?: Invoice[] }
 
@@ -149,13 +148,6 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
         d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
     </svg>,
   },
-  {
-    id: 'details', label: 'Détails',
-    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-        d="M4 6h16M4 10h16M4 14h10M4 18h7" />
-    </svg>,
-  },
 ];
 
 const MobileDashboard: React.FC<{
@@ -175,44 +167,23 @@ const MobileDashboard: React.FC<{
     <div className="flex flex-col min-h-screen" style={{ background: '#080d17' }}>
 
       {/* Header */}
-      <div className="flex-shrink-0 px-4 pt-10 pb-3"
-        style={{ borderBottom: '1px solid #1a2740' }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-              style={{ background: '#10b981' }}>
-              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold text-white">{currentLabel}</span>
-          </div>
-          <button onClick={onReset} className="text-xs px-3 py-1.5 rounded-lg"
-            style={{ color: '#3d5470', background: '#0d1526', border: '1px solid #1a2740' }}>
-            Changer
-          </button>
-        </div>
+      <div className="flex-shrink-0 px-4 pb-3"
+        style={{ borderBottom: '1px solid #1a2740', paddingTop: 'max(14px, env(safe-area-inset-top))' }}>
 
         {/* KPI row — compact single-line pills */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
             style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)' }}>
-            <span className="text-xs" style={{ color: '#3d5470' }}>Encaissé</span>
-            <span className="text-sm font-bold" style={{ color: '#10b981' }}>{fmt(totalPaid)}</span>
+            <span className="text-xs" style={{ color: '#3d5470' }}>Total</span>
+            <span className="text-sm font-bold" style={{ color: '#10b981' }}>{fmtShort(totalPaid)}</span>
           </div>
           {totalPending > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
-              <span className="text-xs" style={{ color: '#3d5470' }}>En attente</span>
-              <span className="text-sm font-bold" style={{ color: '#fbbf24' }}>{fmt(totalPending)}</span>
+              <span className="text-xs" style={{ color: '#3d5470' }}>Impayés</span>
+              <span className="text-sm font-bold" style={{ color: '#fbbf24' }}>{fmtShort(totalPending)}</span>
             </div>
           )}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg ml-auto"
-            style={{ background: '#0d1526', border: '1px solid #1a2740' }}>
-            <span className="text-xs" style={{ color: '#3d5470' }}>Clients</span>
-            <span className="text-sm font-semibold text-white">{new Set(active.map((i) => i.client)).size}</span>
-          </div>
         </div>
       </div>
 
@@ -221,7 +192,6 @@ const MobileDashboard: React.FC<{
         {tab === 'timeline' && <MobileTimeline invoices={invoices} />}
         {tab === 'pie' && <MobilePie invoices={invoices} />}
         {tab === 'bar' && <MobileBar invoices={invoices} />}
-        {tab === 'details' && <MobileDetails invoices={invoices} />}
       </div>
 
       {/* Bottom nav */}
