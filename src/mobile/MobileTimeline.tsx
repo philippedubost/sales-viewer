@@ -6,7 +6,7 @@ import { buildClientColors } from '../utils/colors';
 
 interface Props { invoices: Invoice[] }
 
-const MERGE_DAYS = 14;
+const MERGE_DAYS = 5;
 const TOP_PAD = 26;
 const BOTTOM_PAD = 6;
 const LEFT_PAD = 2;
@@ -78,22 +78,27 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     return buildClientColors(clients);
   }, [active]);
 
-  const { lanes, months, todayX, laneH } = useMemo(() => {
-    if (!active.length) return { lanes: [], months: [], todayX: 0, laneH: 40 };
+  const { lanes, months, todayX, laneH, avgMonthSpacing } = useMemo(() => {
+    if (!active.length) return { lanes: [], months: [], todayX: 0, laneH: 40, avgMonthSpacing: 60 };
 
     const { w, h } = size;
     const chartW = w - LEFT_PAD - RIGHT_PAD;
     const chartH = h - TOP_PAD - BOTTOM_PAD;
 
-    // Group by client, sort by total TTC desc
+    // Group by client, sort by first invoice date ascending (oldest client at top)
     const cmap = new Map<string, Invoice[]>();
     for (const inv of active) {
       if (!cmap.has(inv.client)) cmap.set(inv.client, []);
       cmap.get(inv.client)!.push(inv);
     }
     const clientsSorted = [...cmap.entries()]
-      .map(([name, invs]) => ({ name, total: invs.reduce((s, i) => s + i.ttc, 0), invs }))
-      .sort((a, b) => b.total - a.total);
+      .map(([name, invs]) => ({
+        name,
+        total: invs.reduce((s, i) => s + i.ttc, 0),
+        invs,
+        firstDate: Math.min(...invs.map((i) => i.date.getTime())),
+      }))
+      .sort((a, b) => a.firstDate - b.firstDate); // oldest first → top
 
     const numClients = Math.max(1, clientsSorted.length);
     const laneH = chartH / numClients;
@@ -125,6 +130,11 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
 
     const todayX = xOf(today.getTime());
 
+    // Average pixel spacing between month markers (SVG coords)
+    const avgMonthSpacing = months.length > 1
+      ? (months[months.length - 1].x - months[0].x) / (months.length - 1)
+      : chartW;
+
     const lanes = clientsSorted.map((c, idx) => {
       const cy = TOP_PAD + (idx + 0.5) * laneH;
       const color = colorMap.get(c.name) ?? '#888';
@@ -145,7 +155,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
       };
     });
 
-    return { lanes, months, todayX, laneH };
+    return { lanes, months, todayX, laneH, avgMonthSpacing };
   }, [size, active, colorMap]);
 
   const { w, h } = size;
@@ -280,22 +290,32 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
             stroke="#1a2740" strokeWidth={0.5 / scale} />
         ))}
 
-        {/* Month grid lines */}
+        {/* Month grid lines — always rendered, subtle */}
         {months.map((m, i) => (
           <line key={i}
             x1={m.x} y1={TOP_PAD} x2={m.x} y2={h - BOTTOM_PAD}
             stroke="#141e2e" strokeWidth={1 / scale} />
         ))}
 
-        {/* Month labels */}
-        {months.map((m, i) => (
-          <text key={i}
-            x={m.x + 3 / scale} y={TOP_PAD - 6 / scale}
-            fontSize={9 / scale} fill="#2d4060"
-            fontFamily="Inter, system-ui, sans-serif">
-            {m.label}
-          </text>
-        ))}
+        {/* Adaptive time labels: years only → quarters → months based on zoom */}
+        {months.map((m, i) => {
+          const visualSpacing = avgMonthSpacing * scale;
+          const isJan = m.label.match(/^\d{4}$/); // year label (January)
+          const isQuarter = i % 3 === 0; // every 3 months
+          const show = visualSpacing >= 50 || (visualSpacing >= 20 ? isQuarter : isJan);
+          if (!show) return null;
+          const isYear = !!isJan;
+          return (
+            <text key={i}
+              x={m.x + 3 / scale} y={TOP_PAD - 6 / scale}
+              fontSize={9 / scale}
+              fill={isYear ? '#4a6080' : '#2d4060'}
+              fontWeight={isYear ? '600' : '400'}
+              fontFamily="Inter, system-ui, sans-serif">
+              {m.label}
+            </text>
+          );
+        })}
 
         {/* Today line */}
         <line x1={todayX} y1={TOP_PAD} x2={todayX} y2={h - BOTTOM_PAD}
