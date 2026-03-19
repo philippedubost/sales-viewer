@@ -6,13 +6,12 @@ import { buildClientColors } from '../utils/colors';
 
 interface Props { invoices: Invoice[] }
 
-const MERGE_DAYS = 5;
+const MERGE_DAYS = 14;
 const TOP_PAD = 26;
 const BOTTOM_PAD = 6;
 const LEFT_PAD = 2;
 const RIGHT_PAD = 24;
-const MAX_R_RATIO = 0.42;
-const MIN_R = 3;
+const MIN_R = 4;
 const MAX_SCALE = 14;
 const LABEL_MIN_SCREEN_R = 9;
 
@@ -42,9 +41,9 @@ function amtLabel(ttc: number): string {
   return `${Math.round(abs)}`;
 }
 
-// How important is client idx? 0 = most important. Returns min scale to show name.
+// Min scale to start showing client name — largest clients appear first
 function nameMinScale(idx: number): number {
-  return 0.8 + idx * 0.28;
+  return 0.9 + idx * 0.3;
 }
 
 interface TouchState {
@@ -78,14 +77,15 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     return buildClientColors(clients);
   }, [active]);
 
-  const { lanes, months, todayX, laneH, avgMonthSpacing } = useMemo(() => {
-    if (!active.length) return { lanes: [], months: [], todayX: 0, laneH: 40, avgMonthSpacing: 60 };
+  const { lanes, allBubbles, months, todayX, laneH, avgMonthSpacing } = useMemo(() => {
+    const empty = { lanes: [], allBubbles: [], months: [], todayX: 0, laneH: 40, avgMonthSpacing: 60 };
+    if (!active.length) return empty;
 
     const { w, h } = size;
     const chartW = w - LEFT_PAD - RIGHT_PAD;
     const chartH = h - TOP_PAD - BOTTOM_PAD;
 
-    // Group by client, sort by first invoice date ascending (oldest client at top)
+    // Group by client — sort by first invoice date ascending (oldest client at top)
     const cmap = new Map<string, Invoice[]>();
     for (const inv of active) {
       if (!cmap.has(inv.client)) cmap.set(inv.client, []);
@@ -94,15 +94,14 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     const clientsSorted = [...cmap.entries()]
       .map(([name, invs]) => ({
         name,
-        total: invs.reduce((s, i) => s + i.ttc, 0),
         invs,
         firstDate: Math.min(...invs.map((i) => i.date.getTime())),
+        rawBubbles: mergeBubbles(invs),
       }))
-      .sort((a, b) => a.firstDate - b.firstDate); // oldest first → top
+      .sort((a, b) => a.firstDate - b.firstDate);
 
     const numClients = Math.max(1, clientsSorted.length);
     const laneH = chartH / numClients;
-    const maxR = Math.min(laneH * MAX_R_RATIO, 28);
 
     // Date range
     const allTs = active.map((i) => i.date.getTime());
@@ -110,9 +109,16 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     const today = new Date();
     const maxT = Math.max(...allTs, today.getTime() + 91 * 24 * 3600 * 1000);
     const range = maxT - minT || 1;
-
     const xOf = (t: number) => LEFT_PAD + ((t - minT) / range) * chartW;
-    const maxTTC = Math.max(...active.map((i) => Math.abs(i.ttc)), 1);
+
+    // maxR based on chart height — bubbles can exceed lane height
+    const maxR = Math.min(chartH / 4.5, 50);
+
+    // Compute maxTTC from merged bubbles (not individual invoices)
+    const maxTTC = Math.max(
+      ...clientsSorted.flatMap((c) => c.rawBubbles.map((b) => Math.abs(b.ttc))),
+      1,
+    );
     const rOf = (ttc: number) => Math.max(MIN_R, Math.sqrt(Math.abs(ttc) / maxTTC) * maxR);
 
     // Month markers
@@ -127,35 +133,37 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
       });
       md.setMonth(md.getMonth() + 1);
     }
-
-    const todayX = xOf(today.getTime());
-
-    // Average pixel spacing between month markers (SVG coords)
     const avgMonthSpacing = months.length > 1
       ? (months[months.length - 1].x - months[0].x) / (months.length - 1)
       : chartW;
 
+    const todayX = xOf(today.getTime());
+
     const lanes = clientsSorted.map((c, idx) => {
       const cy = TOP_PAD + (idx + 0.5) * laneH;
       const color = colorMap.get(c.name) ?? '#888';
-      return {
-        name: c.name,
-        color,
+      const bubbles = c.rawBubbles.map((b) => ({
+        cx: xOf(b.date.getTime()),
         cy,
-        laneTop: TOP_PAD + idx * laneH,
-        idx,
-        bubbles: mergeBubbles(c.invs).map((b) => ({
-          cx: xOf(b.date.getTime()),
-          cy,
-          r: rOf(b.ttc),
-          ttc: b.ttc,
-          isPending: b.isPending,
-          label: amtLabel(b.ttc),
-        })),
-      };
+        r: rOf(b.ttc),
+        ttc: b.ttc,
+        isPending: b.isPending,
+        label: amtLabel(b.ttc),
+        color,
+      }));
+      // Rightmost edge for client name placement
+      const rightmostX = bubbles.length
+        ? Math.max(...bubbles.map((b) => b.cx + b.r))
+        : xOf(c.firstDate);
+      return { name: c.name, color, cy, laneTop: TOP_PAD + idx * laneH, idx, bubbles, rightmostX };
     });
 
-    return { lanes, months, todayX, laneH, avgMonthSpacing };
+    // Flatten all bubbles for z-order rendering (largest first = behind)
+    const allBubbles = lanes
+      .flatMap((lane) => lane.bubbles)
+      .sort((a, b) => b.r - a.r);
+
+    return { lanes, allBubbles, months, todayX, laneH, avgMonthSpacing };
   }, [size, active, colorMap]);
 
   const { w, h } = size;
@@ -180,12 +188,9 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
         e.touches[0].clientY - e.touches[1].clientY,
       );
     }
-    // Double-tap reset
     if (e.touches.length === 1) {
       const now = Date.now();
-      if (now - lastTap.current < 300) {
-        setScale(1); setTx(0); setTy(0);
-      }
+      if (now - lastTap.current < 300) { setScale(1); setTx(0); setTy(0); }
       lastTap.current = now;
     }
   }, [scale, tx, ty]);
@@ -204,15 +209,12 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
         e.touches[0].clientY - e.touches[1].clientY,
       );
       const newS = t.startScale * dist / t.startDist;
-
-      // Zoom around current pinch midpoint, anchored to start SVG point
       const curMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const curMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       const startMidX = (t.touches[0].x + t.touches[1].x) / 2;
       const startMidY = (t.touches[0].y + t.touches[1].y) / 2;
       const svgX = (startMidX - t.startTx) / t.startScale;
       const svgY = (startMidY - t.startTy) / t.startScale;
-
       const { s, x, y } = clamp(newS, curMidX - svgX * newS, curMidY - svgY * newS);
       setScale(s); setTx(x); setTy(y);
     }
@@ -239,9 +241,6 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
     </div>
   );
 
-  // In SVG coords, the visible left edge
-  const visLeftSVG = -tx / scale;
-
   return (
     <div
       ref={containerRef}
@@ -257,7 +256,6 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Double-tap hint when zoomed */}
       {scale > 1.3 && (
         <div style={{
           position: 'absolute', bottom: 8, right: 10, zIndex: 10,
@@ -274,6 +272,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           display: 'block',
           transformOrigin: '0 0',
           transform: `translate(${tx}px,${ty}px) scale(${scale})`,
+          overflow: 'visible',
         }}
       >
         {/* Alternating row backgrounds */}
@@ -281,7 +280,7 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           <rect key={idx} x={0} y={lane.laneTop} width={w} height={laneH} fill="#0d1a2e" />
         ) : null)}
 
-        {/* Lane separator lines — under everything */}
+        {/* Lane separator lines */}
         <line x1={0} y1={TOP_PAD} x2={w} y2={TOP_PAD} stroke="#1a2740" strokeWidth={0.5 / scale} />
         {lanes.map((_, idx) => (
           <line key={idx}
@@ -290,21 +289,20 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
             stroke="#1a2740" strokeWidth={0.5 / scale} />
         ))}
 
-        {/* Month grid lines — always rendered, subtle */}
+        {/* Month grid lines — always rendered */}
         {months.map((m, i) => (
           <line key={i}
             x1={m.x} y1={TOP_PAD} x2={m.x} y2={h - BOTTOM_PAD}
             stroke="#141e2e" strokeWidth={1 / scale} />
         ))}
 
-        {/* Adaptive time labels: years only → quarters → months based on zoom */}
+        {/* Adaptive time labels: year-only → quarters → months */}
         {months.map((m, i) => {
           const visualSpacing = avgMonthSpacing * scale;
-          const isJan = m.label.match(/^\d{4}$/); // year label (January)
-          const isQuarter = i % 3 === 0; // every 3 months
-          const show = visualSpacing >= 50 || (visualSpacing >= 20 ? isQuarter : isJan);
+          const isYear = !!m.label.match(/^\d{4}$/);
+          const isQuarter = i % 3 === 0;
+          const show = visualSpacing >= 50 || (visualSpacing >= 20 ? isQuarter : isYear);
           if (!show) return null;
-          const isYear = !!isJan;
           return (
             <text key={i}
               x={m.x + 3 / scale} y={TOP_PAD - 6 / scale}
@@ -326,49 +324,48 @@ const MobileTimeline: React.FC<Props> = ({ invoices }) => {
           auj.
         </text>
 
-        {/* Bubbles */}
-        {lanes.map((lane) =>
-          lane.bubbles.map((b, bi) => (
-            <circle key={bi}
-              cx={b.cx} cy={b.cy} r={b.r}
-              fill={b.isPending ? 'rgba(245,158,11,0.15)' : `${lane.color}25`}
-              stroke={b.isPending ? '#f59e0b' : lane.color}
-              strokeWidth={1.2 / scale} />
-          ))
+        {/* All bubbles — largest rendered first (behind smaller ones) */}
+        {allBubbles.map((b, i) => (
+          <circle key={i}
+            cx={b.cx} cy={b.cy} r={b.r}
+            fill={b.isPending ? 'rgba(245,158,11,0.15)' : `${b.color}25`}
+            stroke={b.isPending ? '#f59e0b' : b.color}
+            strokeWidth={1.2 / scale} />
+        ))}
+
+        {/* Amount labels — appear when bubble is large enough on screen */}
+        {allBubbles.map((b, i) =>
+          b.r * scale > LABEL_MIN_SCREEN_R ? (
+            <text key={i}
+              x={b.cx} y={b.cy + Math.min(9 / scale, b.r * 0.5)}
+              textAnchor="middle"
+              fontSize={Math.min(9 / scale, b.r * 0.6)}
+              fill={b.isPending ? '#fbbf24' : b.color}
+              fontWeight="600"
+              fontFamily="Inter, system-ui, sans-serif">
+              {b.label}
+            </text>
+          ) : null
         )}
 
-        {/* Amount labels — appear progressively as bubbles grow on zoom (Google Maps style) */}
-        {lanes.map((lane) =>
-          lane.bubbles.map((b, bi) =>
-            b.r * scale > LABEL_MIN_SCREEN_R ? (
-              <text key={bi}
-                x={b.cx} y={b.cy + Math.min(9 / scale, b.r * 0.55)}
-                textAnchor="middle"
-                fontSize={Math.min(9 / scale, b.r * 0.6)}
-                fill={b.isPending ? '#fbbf24' : lane.color}
-                fontWeight="600"
-                fontFamily="Inter, system-ui, sans-serif">
-                {b.label}
-              </text>
-            ) : null
-          )
-        )}
-
-        {/* Client name labels — sticky to left viewport edge, appear progressively by importance */}
-        {lanes.map((lane) =>
-          scale >= nameMinScale(lane.idx) ? (
+        {/* Client name — appears to the right of the last bubble, fades in by revenue rank */}
+        {lanes.map((lane) => {
+          const minS = nameMinScale(lane.idx);
+          if (scale < minS) return null;
+          const opacity = Math.min(1, (scale - minS) / 0.4);
+          return (
             <text key={lane.idx}
-              x={visLeftSVG + 4 / scale}
+              x={lane.rightmostX + 5 / scale}
               y={lane.cy + 4 / scale}
               fontSize={10 / scale}
               fill={lane.color}
               fontWeight="500"
-              opacity={Math.min(1, (scale - nameMinScale(lane.idx)) / 0.3)}
+              opacity={opacity}
               fontFamily="Inter, system-ui, sans-serif">
               {lane.name.length > 20 ? lane.name.slice(0, 18) + '…' : lane.name}
             </text>
-          ) : null
-        )}
+          );
+        })}
       </svg>
     </div>
   );
